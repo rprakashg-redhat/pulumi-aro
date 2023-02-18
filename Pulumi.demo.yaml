@@ -1,0 +1,34 @@
+config:
+  azure-native:location: WestUS2
+  azure:subscriptionId: 4f85f91d-f079-4a1e-bed7-8af80f509048
+  azure:tenantId: c74dda19-ecf9-4f61-8586-2bddb1f14324
+  create-aro-cluster:values:
+    domain: ocponzure.com
+    location: WestUS2
+    aadApp:
+      name: "arocluster"
+      displayName: "arocluster"
+      description: "Demo Azure RedHat OpenShift Cluster"
+      owners:
+      - b45bf777-09df-479c-aa44-aadbe6ab85f7  
+    master:
+      VmSize: Standard_D8s_v3
+      count: 1
+    name: aro-demo
+    networking:
+      addressPrefixes: "10.0.0.0/22"
+      name: aro-vnet
+      podCidr: 10.128.0.0/14
+      serviceCidr: 172.30.0.0/16
+      subnets:
+        - addressPrefix: 10.0.0.0/23
+          name: master-subnet
+        - addressPrefix: 10.0.2.0/23
+          name: worker-subnet
+    resourceGroupId: "/subscriptions/a8e8a302-0f3d-4f98-bf14-42f7a25bd25d/resourceGroups/clusterResourceGroup"
+    resourceGroupName: iac-demo
+    worker:
+      DiskSizeGB: 128
+      VmSize: Standard_D2s_v3
+      count: 1
+      name: worker

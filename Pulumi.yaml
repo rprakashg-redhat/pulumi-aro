@@ -1,0 +1,3 @@
+name: create-aro-cluster
+runtime: go
+description: Go pulumi program that creates an Azure ARO cluster
