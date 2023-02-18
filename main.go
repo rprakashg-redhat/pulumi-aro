@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/network"
 	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/resources"
 	"github.com/pulumi/pulumi-azuread/sdk/v5/go/azuread"
@@ -22,8 +20,8 @@ type Values struct {
 	Location          string
 	AadApp            AadApp
 	Networking        Networking
-	ControlPlane      ControlPlaneProfile
-	Compute           WorkerProfile
+	Master            MasterProfile
+	Worker            WorkerProfile
 }
 
 // Networking refers to networking settings for ARO cluster
@@ -42,7 +40,7 @@ type Subnet struct {
 }
 
 // ControlPlaneProfile refers to configuration of Master nodes in ARO Cluster
-type ControlPlaneProfile struct {
+type MasterProfile struct {
 	Count  int
 	VmSize string
 }
@@ -66,7 +64,6 @@ type AadApp struct {
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		var v Values
-		var location string
 		var rg *resources.ResourceGroup
 		var vnet *network.VirtualNetwork
 		var masterSubnet *network.Subnet
@@ -80,8 +77,6 @@ func main() {
 
 		cfg := config.New(ctx, "")
 		cfg.RequireObject("values", &v)
-
-		fmt.Printf("Location : %s", location)
 
 		//create the resource group
 		if rg, err = resources.NewResourceGroup(ctx, "resourceGroup", &resources.ResourceGroupArgs{
@@ -149,7 +144,7 @@ func main() {
 		//create the ARO cluster
 		if aroCluster, err = redhat.NewOpenShiftCluster(ctx, v.Name, &redhat.OpenShiftClusterArgs{
 			ApiserverProfile: &redhat.APIServerProfileArgs{
-				Visibility: pulumi.String("public"),
+				Visibility: pulumi.String("Public"),
 			},
 			ClusterProfile: &redhat.ClusterProfileArgs{
 				Domain:          pulumi.String(v.Domain),
@@ -165,7 +160,7 @@ func main() {
 			Location: pulumi.String(v.Location),
 			MasterProfile: &redhat.MasterProfileArgs{
 				SubnetId: masterSubnet.ID(),
-				VmSize:   pulumi.String(v.ControlPlane.VmSize),
+				VmSize:   pulumi.String(v.Master.VmSize),
 			},
 			NetworkProfile: &redhat.NetworkProfileArgs{
 				PodCidr:     pulumi.String(v.Networking.PodCidr),
@@ -179,11 +174,11 @@ func main() {
 			},
 			WorkerProfiles: redhat.WorkerProfileArray{
 				&redhat.WorkerProfileArgs{
-					Count:      pulumi.Int(v.Compute.Count),
-					DiskSizeGB: pulumi.Int(v.Compute.DiskSizeGB),
-					Name:       pulumi.String(v.Compute.Name),
+					Count:      pulumi.Int(v.Worker.Count),
+					DiskSizeGB: pulumi.Int(v.Worker.DiskSizeGB),
+					Name:       pulumi.String(v.Worker.Name),
 					SubnetId:   workerSubnet.ID(),
-					VmSize:     pulumi.String(v.Compute.VmSize),
+					VmSize:     pulumi.String(v.Worker.VmSize),
 				},
 			},
 			Tags: pulumi.StringMap{},

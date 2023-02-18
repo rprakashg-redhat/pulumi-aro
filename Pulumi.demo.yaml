@@ -12,23 +12,23 @@ config:
       owners:
       - b45bf777-09df-479c-aa44-aadbe6ab85f7  
     master:
-      VmSize: Standard_D8s_v3
+      vmSize: "Standard_D16s_v3"
       count: 1
     name: aro-demo
     networking:
       addressPrefixes: "10.0.0.0/22"
       name: aro-vnet
-      podCidr: 10.128.0.0/14
-      serviceCidr: 172.30.0.0/16
+      podCidr: "10.128.0.0/14"
+      serviceCidr: "172.30.0.0/16"
       subnets:
-        - addressPrefix: 10.0.0.0/23
+        - addressPrefix: "10.0.0.0/23"
           name: master-subnet
-        - addressPrefix: 10.0.2.0/23
+        - addressPrefix: "10.0.2.0/23"
           name: worker-subnet
-    resourceGroupId: "/subscriptions/a8e8a302-0f3d-4f98-bf14-42f7a25bd25d/resourceGroups/clusterResourceGroup"
-    resourceGroupName: iac-demo
+    resourceGroupId: "/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048/resourceGroups/clusterResourceGroup"
+    resourceGroupName: iac
     worker:
-      DiskSizeGB: 128
-      VmSize: Standard_D2s_v3
-      count: 1
+      diskSizeGB: 128
+      vmSize: "Standard_D16s_v3"
+      count: 3
       name: worker
