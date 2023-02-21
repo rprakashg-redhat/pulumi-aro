@@ -1,18 +1,18 @@
 config:
-  azure-native:location: WestUS2
+  azure-native:location: EastUS
   azure:subscriptionId: 4f85f91d-f079-4a1e-bed7-8af80f509048
   azure:tenantId: c74dda19-ecf9-4f61-8586-2bddb1f14324
   create-aro-cluster:values:
-    domain: ocponzure.com
-    location: WestUS2
+    domain: aro-demo.eastus.aroapp.io
+    location: EastUS
     aadApp:
-      name: "arocluster"
-      displayName: "arocluster"
-      description: "Demo Azure RedHat OpenShift Cluster"
+      name: "pulumi-aro"
+      displayName: "pulumi-aro"
+      description: "Demo app provisioning Azure RedHat OpenShift Cluster with Pulumi"
       owners:
       - b45bf777-09df-479c-aa44-aadbe6ab85f7  
     master:
-      vmSize: "Standard_D16s_v3"
+      vmSize: "Standard_D8s_v3"
       count: 1
     name: aro-demo
     networking:
@@ -25,10 +25,10 @@ config:
           name: master-subnet
         - addressPrefix: "10.0.2.0/23"
           name: worker-subnet
-    resourceGroupId: "/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048/resourceGroups/clusterResourceGroup"
-    resourceGroupName: iac
+    clusterResourceGroupName: "iac-aro-managed-rg"
+    resourceGroupName: iac-aro-rg
     worker:
       diskSizeGB: 128
-      vmSize: "Standard_D16s_v3"
+      vmSize: "Standard_D4s_v3"
       count: 3
       name: worker

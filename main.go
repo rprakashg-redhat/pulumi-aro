@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/authorization"
 	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/network"
 	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/resources"
 	"github.com/pulumi/pulumi-azuread/sdk/v5/go/azuread"
@@ -12,16 +13,16 @@ import (
 
 // Values refer to structure for configuration settings that can be passed for creating an ARO cluster
 type Values struct {
-	Name              string
-	ResourceGroupId   string
-	ResourceGroupName string
-	Domain            string
-	PullSecret        string
-	Location          string
-	AadApp            AadApp
-	Networking        Networking
-	Master            MasterProfile
-	Worker            WorkerProfile
+	Name                     string
+	ClusterResourceGroupName string
+	ResourceGroupName        string
+	Domain                   string
+	PullSecret               string
+	Location                 string
+	AadApp                   AadApp
+	Networking               Networking
+	Master                   MasterProfile
+	Worker                   WorkerProfile
 }
 
 // Networking refers to networking settings for ARO cluster
@@ -61,10 +62,28 @@ type AadApp struct {
 	Owners      []string
 }
 
+/*func readPullsecretAsJsonString(fileName string) (string, error) {
+	var pullSecretJson string
+	var content []byte
+	var err error
+
+	if content, err = os.ReadFile(fileName); err != nil {
+		return "", err
+	}
+
+	//stringify json read
+	pullSecretJson = string(content)
+
+	fmt.Printf("Pull secret: %s", pullSecretJson)
+
+	return pullSecretJson, nil
+}*/
+
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		var v Values
 		var rg *resources.ResourceGroup
+		var clusterRg *resources.ResourceGroup
 		var vnet *network.VirtualNetwork
 		var masterSubnet *network.Subnet
 		var workerSubnet *network.Subnet
@@ -72,15 +91,21 @@ func main() {
 		var aadApp *azuread.Application
 		var aadSp *azuread.ServicePrincipal
 		var aadSpPassword *azuread.ServicePrincipalPassword
-
+		var pullSecret string
 		var err error
 
 		cfg := config.New(ctx, "")
 		cfg.RequireObject("values", &v)
 
-		//create the resource group
-		if rg, err = resources.NewResourceGroup(ctx, "resourceGroup", &resources.ResourceGroupArgs{
+		//create the resource groups needed
+		if rg, err = resources.NewResourceGroup(ctx, v.ResourceGroupName, &resources.ResourceGroupArgs{
 			ResourceGroupName: pulumi.String(v.ResourceGroupName),
+		}); err != nil {
+			return err
+		}
+
+		if clusterRg, err = resources.NewResourceGroup(ctx, v.ClusterResourceGroupName, &resources.ResourceGroupArgs{
+			ResourceGroupName: pulumi.String(v.ClusterResourceGroupName),
 		}); err != nil {
 			return err
 		}
@@ -141,6 +166,35 @@ func main() {
 			return err
 		}
 
+		//grant network contributor permissions to service principal on vnet
+		authorization.NewRoleAssignment(ctx, "roleassignment", &authorization.RoleAssignmentArgs{
+			PrincipalId:        aadSp.ID(),
+			PrincipalType:      pulumi.String("ServicePrincipal"),
+			RoleAssignmentName: pulumi.String("349e5c2a-5cee-4bfe-9fc6-56765717a411"),
+			RoleDefinitionId:   pulumi.String("/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7"),
+			Scope:              vnet.ID(),
+		})
+		//grant network contributor permissions to resource provider service principal on vnet
+		authorization.NewRoleAssignment(ctx, "roleassignment-rp", &authorization.RoleAssignmentArgs{
+			PrincipalId:        pulumi.String("fa53c24f-b862-4ff8-8259-03cc9859027c"),
+			PrincipalType:      pulumi.String("ServicePrincipal"),
+			RoleAssignmentName: pulumi.String("790d59fd-c011-4413-834e-e3f3cccd3f5b"),
+			RoleDefinitionId:   pulumi.String("/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7"),
+			Scope:              vnet.ID(),
+		})
+		//also grant contributor permissions to service principal on cluster resource group
+		authorization.NewRoleAssignment(ctx, "cluster-rg-contrib-assignment", &authorization.RoleAssignmentArgs{
+			PrincipalId:        aadSp.ID(),
+			PrincipalType:      pulumi.String("ServicePrincipal"),
+			RoleAssignmentName: pulumi.String("77d3ffd6-e4d7-4555-bde7-0e2f08b08912"),
+			RoleDefinitionId:   pulumi.String("/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"),
+			Scope:              clusterRg.ID(), //pulumi.String("/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048"),
+		})
+
+		//if pullSecret, err = readPullsecretAsJsonString("pull-secret.txt"); err != nil {
+		//	return err
+		//}
+
 		//create the ARO cluster
 		if aroCluster, err = redhat.NewOpenShiftCluster(ctx, v.Name, &redhat.OpenShiftClusterArgs{
 			ApiserverProfile: &redhat.APIServerProfileArgs{
@@ -148,7 +202,8 @@ func main() {
 			},
 			ClusterProfile: &redhat.ClusterProfileArgs{
 				Domain:          pulumi.String(v.Domain),
-				ResourceGroupId: pulumi.String(v.ResourceGroupId),
+				ResourceGroupId: clusterRg.ID(),
+				PullSecret:      pulumi.String(pullSecret),
 			},
 			ConsoleProfile: nil,
 			IngressProfiles: redhat.IngressProfileArray{
