@@ -25,7 +25,7 @@ config:
           name: master-subnet
         - addressPrefix: "10.0.2.0/23"
           name: worker-subnet
-    clusterResourceGroupName: "iac-aro-managed-rg"
+    clusterResourceGroupName: "iac-aro-infra-rg"
     resourceGroupName: iac-aro-rg
     worker:
       diskSizeGB: 128
