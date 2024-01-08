@@ -1,7 +1,7 @@
 config:
   azure-native:location: EastUS
-  azure:subscriptionId: 4f85f91d-f079-4a1e-bed7-8af80f509048
-  azure:tenantId: c74dda19-ecf9-4f61-8586-2bddb1f14324
+  azure-native:subscriptionId: 4f85f91d-f079-4a1e-bed7-8af80f509048
+  azure-native:tenantId: c74dda19-ecf9-4f61-8586-2bddb1f14324
   create-aro-cluster:values:
     domain: aro-demo.eastus.aroapp.io
     location: EastUS
@@ -13,7 +13,7 @@ config:
       - b45bf777-09df-479c-aa44-aadbe6ab85f7  
     master:
       vmSize: "Standard_D8s_v3"
-      count: 1
+      count: 3
     name: aro-demo
     networking:
       addressPrefixes: "10.0.0.0/22"
