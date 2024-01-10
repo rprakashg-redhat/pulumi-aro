@@ -2,22 +2,31 @@ config:
   azure-native:location: EastUS
   azure-native:subscriptionId: 4f85f91d-f079-4a1e-bed7-8af80f509048
   azure-native:tenantId: c74dda19-ecf9-4f61-8586-2bddb1f14324
-  create-aro-cluster:values:
-    domain: aro-demo.eastus.aroapp.io
+  pulumi-aro:values:
+    clusterResourceGroupName: aro-infra-rg
+    resourceGroupName: aro-rg
+    name: arodemo
+    domain: demos
     location: EastUS
-    aadApp:
-      name: "pulumi-aro"
-      displayName: "pulumi-aro"
-      description: "Demo app provisioning Azure RedHat OpenShift Cluster with Pulumi"
-      owners:
-      - b45bf777-09df-479c-aa44-aadbe6ab85f7  
+    servicePrincipal:
+      name: "arodemo-sp"
+      description: "pulumi aro demo service principal"
+      roles:
+      - name: "User Access Administrator"
+        idFormat: "/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/18d7d88d-d35e-4fb5-a5c3-7773c20a72d9"
+      - name: "Contributor"
+        idFormat: "/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
     master:
       vmSize: "Standard_D8s_v3"
       count: 3
-    name: aro-demo
+    worker:
+      diskSizeGB: 128
+      vmSize: "Standard_D4s_v3"
+      count: 3
+      name: worker
     networking:
       addressPrefixes: "10.0.0.0/22"
-      name: aro-vnet
+      name: arodemo-vnet
       podCidr: "10.128.0.0/14"
       serviceCidr: "172.30.0.0/16"
       subnets:
@@ -25,10 +34,5 @@ config:
           name: master-subnet
         - addressPrefix: "10.0.2.0/23"
           name: worker-subnet
-    clusterResourceGroupName: "iac-aro-infra-rg"
-    resourceGroupName: iac-aro-rg
-    worker:
-      diskSizeGB: 128
-      vmSize: "Standard_D4s_v3"
-      count: 3
-      name: worker
+    
+    

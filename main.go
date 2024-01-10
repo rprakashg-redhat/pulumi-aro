@@ -1,25 +1,30 @@
 package main
 
 import (
-	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/authorization"
-	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/network"
-	"github.com/pulumi/pulumi-azure-native/sdk/go/azure/resources"
+	"fmt"
+	"os"
+
+	"github.com/google/uuid"
+	"github.com/pulumi/pulumi-azure-native-sdk/authorization/v2"
+	"github.com/pulumi/pulumi-azure-native-sdk/network/v2"
+	"github.com/pulumi/pulumi-azure-native-sdk/redhatopenshift/v2"
+	"github.com/pulumi/pulumi-azure-native-sdk/resources/v2"
 	"github.com/pulumi/pulumi-azuread/sdk/v5/go/azuread"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
-
-	redhat "github.com/pulumi/pulumi-azure-native/sdk/go/azure/redhatopenshift"
 )
+
+const ARO_SP_NAME = "Azure Red Hat OpenShift RP"
 
 // Values refer to structure for configuration settings that can be passed for creating an ARO cluster
 type Values struct {
-	Name                     string
 	ClusterResourceGroupName string
 	ResourceGroupName        string
+	Name                     string
 	Domain                   string
-	PullSecret               string
 	Location                 string
-	AadApp                   AadApp
+	ServicePrincipal         ServicePrincipal
+	PullSecret               string
 	Networking               Networking
 	Master                   MasterProfile
 	Worker                   WorkerProfile
@@ -54,15 +59,20 @@ type WorkerProfile struct {
 	Name       string
 }
 
-// AadApp refers to configuration values to be used when creating AzureAD app and Service Principal
-type AadApp struct {
+// ServicePrincipal refers to configuration for service principal resource will be created in AAD
+type ServicePrincipal struct {
 	Name        string
-	DisplayName string
 	Description string
-	Owners      []string
+	Roles       []Role
 }
 
-/*func readPullsecretAsJsonString(fileName string) (string, error) {
+// Role refers to Role to be assigned for service principal
+type Role struct {
+	Name     string
+	IdFormat string
+}
+
+func readPullsecretAsJsonString(fileName string) (string, error) {
 	var pullSecretJson string
 	var content []byte
 	var err error
@@ -74,68 +84,81 @@ type AadApp struct {
 	//stringify json read
 	pullSecretJson = string(content)
 
-	fmt.Printf("Pull secret: %s", pullSecretJson)
-
 	return pullSecretJson, nil
-}*/
+}
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		var v Values
+		var err error
+		var subscriptionId string
 		var rg *resources.ResourceGroup
-		var clusterRg *resources.ResourceGroup
 		var vnet *network.VirtualNetwork
 		var masterSubnet *network.Subnet
 		var workerSubnet *network.Subnet
-		var aroCluster *redhat.OpenShiftCluster
+		var aroCluster *redhatopenshift.OpenShiftCluster
 		var aadApp *azuread.Application
-		var aadSp *azuread.ServicePrincipal
-		var aadSpPassword *azuread.ServicePrincipalPassword
+		var sp *azuread.ServicePrincipal
+		var aroSP *azuread.ServicePrincipal
+		var spPwd *azuread.ServicePrincipalPassword
 		var pullSecret string
-		var err error
 
 		cfg := config.New(ctx, "")
 		cfg.RequireObject("values", &v)
 
-		//create the resource groups needed
+		subscriptionId = "4f85f91d-f079-4a1e-bed7-8af80f509048"
+		fmt.Printf("Subscription ID : %s", subscriptionId)
+
+		//create the resource group
 		if rg, err = resources.NewResourceGroup(ctx, v.ResourceGroupName, &resources.ResourceGroupArgs{
 			ResourceGroupName: pulumi.String(v.ResourceGroupName),
 		}); err != nil {
 			return err
 		}
 
-		if clusterRg, err = resources.NewResourceGroup(ctx, v.ClusterResourceGroupName, &resources.ResourceGroupArgs{
-			ResourceGroupName: pulumi.String(v.ClusterResourceGroupName),
+		if aadApp, err = azuread.NewApplication(ctx, uuid.New().String(), &azuread.ApplicationArgs{
+			DisplayName: pulumi.String("Pulumi ARO app"),
 		}); err != nil {
 			return err
 		}
 
-		//Create an AD Service Principal
-		if aadApp, err = azuread.NewApplication(ctx, v.AadApp.Name, &azuread.ApplicationArgs{
-			Description: pulumi.String(v.AadApp.Description),
-			DisplayName: pulumi.String(v.AadApp.DisplayName),
-			Owners: pulumi.ToStringArray(
-				v.AadApp.Owners,
-			),
+		//Create an AAD Service Principal
+		if sp, err = azuread.NewServicePrincipal(ctx, v.ServicePrincipal.Name, &azuread.ServicePrincipalArgs{
+			Description: pulumi.String(v.ServicePrincipal.Description),
+			ClientId:    aadApp.ClientId,
 		}); err != nil {
 			return err
 		}
 
-		if aadSp, err = azuread.NewServicePrincipal(ctx, "arosp", &azuread.ServicePrincipalArgs{
-			ApplicationId: aadApp.ApplicationId,
-		}); err != nil {
-			return err
-		}
 		//create the service principal password
-		if aadSpPassword, err = azuread.NewServicePrincipalPassword(ctx, "arospPassword", &azuread.ServicePrincipalPasswordArgs{
-			ServicePrincipalId: aadSp.ID(),
+		if spPwd, err = azuread.NewServicePrincipalPassword(ctx, fmt.Sprintf("%s-password", v.ServicePrincipal.Name), &azuread.ServicePrincipalPasswordArgs{
+			ServicePrincipalId: sp.ID(),
 			EndDate:            pulumi.String("2099-01-01T00:00:00Z"),
 		}); err != nil {
 			return err
 		}
 
-		//create virtual network
-		if vnet, err = network.NewVirtualNetwork(ctx, "virtualNetwork", &network.VirtualNetworkArgs{
+		/*
+			for _, r := range v.ServicePrincipal.Roles {
+				assignmentName := uuid.New()
+				//grant required roles to the service principal on resource group
+				authorization.NewRoleAssignment(ctx, assignmentName.String(), &authorization.RoleAssignmentArgs{
+					PrincipalId:      sp.ID(),
+					PrincipalType:    pulumi.String("ServicePrincipal"),
+					RoleDefinitionId: pulumi.String(fmt.Sprintf(r.IdFormat, subscriptionId)),
+					Scope:            rg.ID(),
+				}, pulumi.DependsOn([]pulumi.Resource{rg}))
+			}
+		*/
+
+		// get the service principal object id for the Azure RedHat OpenShift Resource Provider
+		if aroSP, err = azuread.GetServicePrincipal(ctx, ARO_SP_NAME, pulumi.ID("fa53c24f-b862-4ff8-8259-03cc9859027c"), nil); err != nil {
+			fmt.Print("Unable to look up Azure RedHat OpenShift Resource Provider Service Principal")
+			return err
+		}
+
+		//create virtual network and master and worker subnets
+		if vnet, err = network.NewVirtualNetwork(ctx, v.Networking.Name, &network.VirtualNetworkArgs{
 			AddressSpace: &network.AddressSpaceArgs{
 				AddressPrefixes: pulumi.StringArray{
 					pulumi.String(v.Networking.AddressPrefixes),
@@ -149,105 +172,116 @@ func main() {
 
 		//create subnets for master and worker nodes
 		if masterSubnet, err = network.NewSubnet(ctx, v.Networking.Subnets[0].Name, &network.SubnetArgs{
-			AddressPrefixes:    pulumi.StringArray{pulumi.String(v.Networking.Subnets[0].AddressPrefix)},
-			Name:               pulumi.String(v.Networking.Subnets[0].Name),
-			VirtualNetworkName: vnet.Name,
-			ResourceGroupName:  rg.Name,
+			AddressPrefixes:                   pulumi.StringArray{pulumi.String(v.Networking.Subnets[0].AddressPrefix)},
+			SubnetName:                        pulumi.String(v.Networking.Subnets[0].Name),
+			VirtualNetworkName:                vnet.Name,
+			ResourceGroupName:                 rg.Name,
+			PrivateLinkServiceNetworkPolicies: pulumi.String("Disabled"),
+			ServiceEndpoints: network.ServiceEndpointPropertiesFormatArray{
+				network.ServiceEndpointPropertiesFormatArgs{
+					Service: pulumi.String("Microsoft.ContainerRegistry"),
+				},
+			},
 		}); err != nil {
 			return err
 		}
 
 		if workerSubnet, err = network.NewSubnet(ctx, v.Networking.Subnets[1].Name, &network.SubnetArgs{
-			AddressPrefixes:    pulumi.StringArray{pulumi.String(v.Networking.Subnets[1].AddressPrefix)},
-			Name:               pulumi.String(v.Networking.Subnets[1].Name),
-			VirtualNetworkName: vnet.Name,
-			ResourceGroupName:  rg.Name,
-		}); err != nil {
+			AddressPrefixes:                   pulumi.StringArray{pulumi.String(v.Networking.Subnets[1].AddressPrefix)},
+			SubnetName:                        pulumi.String(v.Networking.Subnets[1].Name),
+			VirtualNetworkName:                vnet.Name,
+			ResourceGroupName:                 rg.Name,
+			PrivateLinkServiceNetworkPolicies: pulumi.String("Disabled"),
+			ServiceEndpoints: network.ServiceEndpointPropertiesFormatArray{
+				network.ServiceEndpointPropertiesFormatArgs{
+					Service: pulumi.String("Microsoft.ContainerRegistry"),
+				},
+			},
+		}, pulumi.DependsOn([]pulumi.Resource{masterSubnet})); err != nil {
 			return err
 		}
 
-		//grant network contributor permissions to service principal on vnet
-		authorization.NewRoleAssignment(ctx, "roleassignment", &authorization.RoleAssignmentArgs{
-			PrincipalId:        aadSp.ID(),
-			PrincipalType:      pulumi.String("ServicePrincipal"),
-			RoleAssignmentName: pulumi.String("349e5c2a-5cee-4bfe-9fc6-56765717a411"),
-			RoleDefinitionId:   pulumi.String("/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7"),
-			Scope:              vnet.ID(),
+		assignmentName := uuid.New()
+		//grant  network contributor permissions to service principal on vnet
+		authorization.NewRoleAssignment(ctx, assignmentName.String(), &authorization.RoleAssignmentArgs{
+			PrincipalId:      sp.ID(),
+			PrincipalType:    pulumi.String("ServicePrincipal"),
+			RoleDefinitionId: pulumi.String(fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7", subscriptionId)),
+			Scope:            vnet.ID(),
 		})
-		//grant network contributor permissions to resource provider service principal on vnet
-		authorization.NewRoleAssignment(ctx, "roleassignment-rp", &authorization.RoleAssignmentArgs{
-			PrincipalId:        pulumi.String("fa53c24f-b862-4ff8-8259-03cc9859027c"),
-			PrincipalType:      pulumi.String("ServicePrincipal"),
-			RoleAssignmentName: pulumi.String("790d59fd-c011-4413-834e-e3f3cccd3f5b"),
-			RoleDefinitionId:   pulumi.String("/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7"),
-			Scope:              vnet.ID(),
-		})
-		//also grant contributor permissions to service principal on cluster resource group
-		authorization.NewRoleAssignment(ctx, "cluster-rg-contrib-assignment", &authorization.RoleAssignmentArgs{
-			PrincipalId:        aadSp.ID(),
-			PrincipalType:      pulumi.String("ServicePrincipal"),
-			RoleAssignmentName: pulumi.String("77d3ffd6-e4d7-4555-bde7-0e2f08b08912"),
-			RoleDefinitionId:   pulumi.String("/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"),
-			Scope:              clusterRg.ID(), //pulumi.String("/subscriptions/4f85f91d-f079-4a1e-bed7-8af80f509048"),
+		//grant network contributor permissions to ARO provider service principal on vnet
+		assignmentName = uuid.New()
+		authorization.NewRoleAssignment(ctx, assignmentName.String(), &authorization.RoleAssignmentArgs{
+			PrincipalId:      aroSP.ID(),
+			PrincipalType:    pulumi.String("ServicePrincipal"),
+			RoleDefinitionId: pulumi.String(fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7", subscriptionId)),
+			Scope:            vnet.ID(),
 		})
 
-		//if pullSecret, err = readPullsecretAsJsonString("pull-secret.txt"); err != nil {
-		//	return err
-		//}
+		if pullSecret, err = readPullsecretAsJsonString("pull-secret.txt"); err != nil {
+			return err
+		}
+		clusterResourceGroupId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionId, v.ClusterResourceGroupName)
 
 		//create the ARO cluster
-		if aroCluster, err = redhat.NewOpenShiftCluster(ctx, v.Name, &redhat.OpenShiftClusterArgs{
-			ApiserverProfile: &redhat.APIServerProfileArgs{
+		if aroCluster, err = redhatopenshift.NewOpenShiftCluster(ctx, v.Name, &redhatopenshift.OpenShiftClusterArgs{
+			ApiserverProfile: &redhatopenshift.APIServerProfileArgs{
 				Visibility: pulumi.String("Public"),
 			},
-			ClusterProfile: &redhat.ClusterProfileArgs{
-				Domain:          pulumi.String(v.Domain),
-				ResourceGroupId: clusterRg.ID(),
-				PullSecret:      pulumi.String(pullSecret),
+			ClusterProfile: &redhatopenshift.ClusterProfileArgs{
+				Domain:               pulumi.String(v.Domain),
+				FipsValidatedModules: pulumi.String("Enabled"),
+				ResourceGroupId:      pulumi.String(clusterResourceGroupId),
+				PullSecret:           pulumi.String(pullSecret),
 			},
 			ConsoleProfile: nil,
-			IngressProfiles: redhat.IngressProfileArray{
-				&redhat.IngressProfileArgs{
+			IngressProfiles: redhatopenshift.IngressProfileArray{
+				&redhatopenshift.IngressProfileArgs{
 					Name:       pulumi.String("default"),
 					Visibility: pulumi.String("Public"),
 				},
 			},
 			Location: pulumi.String(v.Location),
-			MasterProfile: &redhat.MasterProfileArgs{
-				SubnetId: masterSubnet.ID(),
-				VmSize:   pulumi.String(v.Master.VmSize),
+			MasterProfile: &redhatopenshift.MasterProfileArgs{
+				EncryptionAtHost: pulumi.String("Disabled"),
+				SubnetId:         masterSubnet.ID(),
+				VmSize:           pulumi.String(v.Master.VmSize),
 			},
-			NetworkProfile: &redhat.NetworkProfileArgs{
+			NetworkProfile: &redhatopenshift.NetworkProfileArgs{
 				PodCidr:     pulumi.String(v.Networking.PodCidr),
 				ServiceCidr: pulumi.String(v.Networking.ServiceCidr),
 			},
 			ResourceGroupName: rg.Name,
 			ResourceName:      pulumi.String(v.Name),
-			ServicePrincipalProfile: &redhat.ServicePrincipalProfileArgs{
-				ClientId:     aadApp.ApplicationId,
-				ClientSecret: aadSpPassword.Value,
+			ServicePrincipalProfile: &redhatopenshift.ServicePrincipalProfileArgs{
+				ClientId:     sp.ClientId,
+				ClientSecret: spPwd.Value,
 			},
-			WorkerProfiles: redhat.WorkerProfileArray{
-				&redhat.WorkerProfileArgs{
-					Count:      pulumi.Int(v.Worker.Count),
-					DiskSizeGB: pulumi.Int(v.Worker.DiskSizeGB),
-					Name:       pulumi.String(v.Worker.Name),
-					SubnetId:   workerSubnet.ID(),
-					VmSize:     pulumi.String(v.Worker.VmSize),
+			WorkerProfiles: redhatopenshift.WorkerProfileArray{
+				&redhatopenshift.WorkerProfileArgs{
+					Count:            pulumi.Int(v.Worker.Count),
+					DiskSizeGB:       pulumi.Int(v.Worker.DiskSizeGB),
+					Name:             pulumi.String(v.Worker.Name),
+					SubnetId:         workerSubnet.ID(),
+					VmSize:           pulumi.String(v.Worker.VmSize),
+					EncryptionAtHost: pulumi.String("Disabled"),
 				},
 			},
-			Tags: pulumi.StringMap{},
-		}); err != nil {
+			Tags: pulumi.StringMap{
+				"key": pulumi.String("value"),
+			},
+		}, pulumi.DependsOn([]pulumi.Resource{rg, vnet, masterSubnet, workerSubnet})); err != nil {
 			return err
 		}
+
 		ctx.Export("kubeconfig", pulumi.All(aroCluster.Name, rg.Name, rg.ID()).ApplyT(func(args interface{}) (string, error) {
-			var result *redhat.ListOpenShiftClusterAdminCredentialsResult
+			var result *redhatopenshift.ListOpenShiftClusterAdminCredentialsResult
 			var err error
 
 			clusterName := args.([]interface{})[0].(string)
 			resourceGroupNAme := args.([]interface{})[1].(string)
 
-			if result, err = redhat.ListOpenShiftClusterAdminCredentials(ctx, &redhat.ListOpenShiftClusterAdminCredentialsArgs{
+			if result, err = redhatopenshift.ListOpenShiftClusterAdminCredentials(ctx, &redhatopenshift.ListOpenShiftClusterAdminCredentialsArgs{
 				ResourceGroupName: resourceGroupNAme,
 				ResourceName:      clusterName,
 			}); err != nil {
