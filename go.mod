@@ -1,4 +1,4 @@
-module github.com/rprakashg-redhat/create-aro-cluster
+module github.com/rprakashg-redhat/pulumi-aro
 
 go 1.21.5
 

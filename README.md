@@ -51,3 +51,10 @@ You can find the OpenShift console URL by running command below
 ```
 
 Laumch the console in a broweser and login with the credentials retrieved earlier.
+
+
+Run the command below and select the "dev" stack to destroy all the resources created
+
+```
+pulumi destroy
+```

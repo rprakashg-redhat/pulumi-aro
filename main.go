@@ -63,13 +63,6 @@ type WorkerProfile struct {
 type ServicePrincipal struct {
 	Name        string
 	Description string
-	Roles       []Role
-}
-
-// Role refers to Role to be assigned for service principal
-type Role struct {
-	Name     string
-	IdFormat string
 }
 
 func readPullsecretAsJsonString(fileName string) (string, error) {
@@ -137,19 +130,6 @@ func main() {
 		}); err != nil {
 			return err
 		}
-
-		/*
-			for _, r := range v.ServicePrincipal.Roles {
-				assignmentName := uuid.New()
-				//grant required roles to the service principal on resource group
-				authorization.NewRoleAssignment(ctx, assignmentName.String(), &authorization.RoleAssignmentArgs{
-					PrincipalId:      sp.ID(),
-					PrincipalType:    pulumi.String("ServicePrincipal"),
-					RoleDefinitionId: pulumi.String(fmt.Sprintf(r.IdFormat, subscriptionId)),
-					Scope:            rg.ID(),
-				}, pulumi.DependsOn([]pulumi.Resource{rg}))
-			}
-		*/
 
 		// get the service principal object id for the Azure RedHat OpenShift Resource Provider
 		if aroSP, err = azuread.GetServicePrincipal(ctx, ARO_SP_NAME, pulumi.ID("fa53c24f-b862-4ff8-8259-03cc9859027c"), nil); err != nil {
