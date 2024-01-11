@@ -29,5 +29,6 @@ config:
           name: master-subnet
         - addressPrefix: "10.0.2.0/23"
           name: worker-subnet
-    
+    tags:
+      email: rgopinat@redhat.com
     

@@ -28,6 +28,7 @@ type Values struct {
 	Networking               Networking
 	Master                   MasterProfile
 	Worker                   WorkerProfile
+	Tags                     map[string]string
 }
 
 // Networking refers to networking settings for ARO cluster
@@ -247,9 +248,7 @@ func main() {
 					EncryptionAtHost: pulumi.String("Disabled"),
 				},
 			},
-			Tags: pulumi.StringMap{
-				"key": pulumi.String("value"),
-			},
+			Tags: pulumi.ToStringMap(v.Tags),
 		}, pulumi.DependsOn([]pulumi.Resource{rg, vnet, masterSubnet, workerSubnet})); err != nil {
 			return err
 		}
