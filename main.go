@@ -37,7 +37,8 @@ type Networking struct {
 	AddressPrefixes string
 	PodCidr         string
 	ServiceCidr     string
-	Subnets         []Subnet
+	MasterSubnet    Subnet
+	WorkerSubnet    Subnet
 }
 
 // Subnet refers to custom subnets for master and worker nodes to be used
@@ -152,9 +153,9 @@ func main() {
 		}
 
 		//create subnets for master and worker nodes
-		if masterSubnet, err = network.NewSubnet(ctx, v.Networking.Subnets[0].Name, &network.SubnetArgs{
-			AddressPrefixes:                   pulumi.StringArray{pulumi.String(v.Networking.Subnets[0].AddressPrefix)},
-			SubnetName:                        pulumi.String(v.Networking.Subnets[0].Name),
+		if masterSubnet, err = network.NewSubnet(ctx, v.Networking.MasterSubnet.Name, &network.SubnetArgs{
+			AddressPrefixes:                   pulumi.StringArray{pulumi.String(v.Networking.MasterSubnet.AddressPrefix)},
+			SubnetName:                        pulumi.String(v.Networking.MasterSubnet.Name),
 			VirtualNetworkName:                vnet.Name,
 			ResourceGroupName:                 rg.Name,
 			PrivateLinkServiceNetworkPolicies: pulumi.String("Disabled"),
@@ -167,9 +168,9 @@ func main() {
 			return err
 		}
 
-		if workerSubnet, err = network.NewSubnet(ctx, v.Networking.Subnets[1].Name, &network.SubnetArgs{
-			AddressPrefixes:                   pulumi.StringArray{pulumi.String(v.Networking.Subnets[1].AddressPrefix)},
-			SubnetName:                        pulumi.String(v.Networking.Subnets[1].Name),
+		if workerSubnet, err = network.NewSubnet(ctx, v.Networking.WorkerSubnet.Name, &network.SubnetArgs{
+			AddressPrefixes:                   pulumi.StringArray{pulumi.String(v.Networking.WorkerSubnet.AddressPrefix)},
+			SubnetName:                        pulumi.String(v.Networking.WorkerSubnet.Name),
 			VirtualNetworkName:                vnet.Name,
 			ResourceGroupName:                 rg.Name,
 			PrivateLinkServiceNetworkPolicies: pulumi.String("Disabled"),
