@@ -28,7 +28,6 @@ type ConfigData struct {
 	ResourceGroupName        string
 	Name                     string
 	Domain                   string
-	Location                 string
 	ServicePrincipal         ServicePrincipal
 	PullSecret               string
 	Networking               Networking
@@ -221,7 +220,7 @@ func main() {
 					Visibility: pulumi.String("Public"),
 				},
 			},
-			Location: pulumi.String(configData.Location),
+			Location: pulumi.String(azureNativeConfig.Location),
 			MasterProfile: &redhatopenshift.MasterProfileArgs{
 				EncryptionAtHost: pulumi.String("Disabled"),
 				SubnetId:         masterSubnet.ID(),
@@ -315,12 +314,6 @@ func readConfig(ctx *pulumi.Context) ConfigData {
 		configData.Domain = "demos"
 	} else {
 		configData.Domain = domain
-	}
-
-	if location, err := cfg.Try("location"); err != nil {
-		configData.Location = "EastUS"
-	} else {
-		configData.Location = location
 	}
 
 	configData.ServicePrincipal = ServicePrincipal{}
