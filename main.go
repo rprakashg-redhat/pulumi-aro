@@ -76,7 +76,6 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		var configData ConfigData
 		var err error
-		var subscriptionId string
 		var rg *resources.ResourceGroup
 		var vnet *network.VirtualNetwork
 		var masterSubnet *network.Subnet
@@ -89,9 +88,16 @@ func main() {
 		var azureNativeConfig AzureNative
 
 		configData = readConfig(ctx)
-
-		subscriptionId = "4f85f91d-f079-4a1e-bed7-8af80f509048"
-		fmt.Printf("Subscription ID : %s", subscriptionId)
+		//read azure-native config
+		azNative := config.New(ctx, "azure-native")
+		location := azNative.Require("location")
+		subscriptionId := azNative.Require("subscriptionId")
+		tenantId := azNative.Require("tenantId")
+		azureNativeConfig = AzureNative{
+			Location:       location,
+			SubscriptionId: subscriptionId,
+			TenantId:       tenantId,
+		}
 
 		//create the resource group
 		if rg, err = resources.NewResourceGroup(ctx, configData.ResourceGroupName, &resources.ResourceGroupArgs{
@@ -177,7 +183,7 @@ func main() {
 		authorization.NewRoleAssignment(ctx, assignmentName.String(), &authorization.RoleAssignmentArgs{
 			PrincipalId:      sp.ID(),
 			PrincipalType:    pulumi.String("ServicePrincipal"),
-			RoleDefinitionId: pulumi.String(fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7", subscriptionId)),
+			RoleDefinitionId: pulumi.String(fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7", azureNativeConfig.SubscriptionId)),
 			Scope:            vnet.ID(),
 		})
 		//grant network contributor permissions to ARO provider service principal on vnet
@@ -185,11 +191,11 @@ func main() {
 		authorization.NewRoleAssignment(ctx, assignmentName.String(), &authorization.RoleAssignmentArgs{
 			PrincipalId:      aroSP.ID(),
 			PrincipalType:    pulumi.String("ServicePrincipal"),
-			RoleDefinitionId: pulumi.String(fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7", subscriptionId)),
+			RoleDefinitionId: pulumi.String(fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7", azureNativeConfig.SubscriptionId)),
 			Scope:            vnet.ID(),
 		})
 
-		if configData.PullSecret != "" {
+		if configData.PullSecret == "" {
 			//read from local
 			if pullSecret, err := readPullsecretAsJsonString("pull-secret.txt"); err != nil {
 				return err
@@ -198,8 +204,6 @@ func main() {
 			}
 		}
 
-		//read subscription id
-		config.GetObject(ctx, "azure-native", &azureNativeConfig)
 		clusterResourceGroupId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", azureNativeConfig.SubscriptionId, configData.ClusterResourceGroupName)
 
 		//create the ARO cluster
