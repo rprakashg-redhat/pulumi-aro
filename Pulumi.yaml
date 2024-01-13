@@ -17,9 +17,6 @@ template:
       description: |
         Domain name can be a custom domain (example.com) or a prefix (abc) that will be used as part of the auto-generated DNS name for OpenShift console and API servers
       default: demos
-    location:
-      description: Azure region where the cluster resources will be provisioned
-      default: EastUS
     servicePrincipalName:
       description: Serviceprincipal name
       default: arodemo-sp
