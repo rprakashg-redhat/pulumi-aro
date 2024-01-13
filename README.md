@@ -13,6 +13,13 @@ Total Regional vCPUs = 200
 Update the subscription id, tenant id in stack configuration file Pulumi.dev.yaml then run pulumi up
 
 ```
+  azure-native:location: EastUS
+  azure-native:subscriptionId: 4f85f91d-f079-4a1e-bed7-8af80f509048
+  azure-native:tenantId: c74dda19-ecf9-4f61-8586-2bddb1f14324
+
+```
+
+```
 pulumi up
 ```
 

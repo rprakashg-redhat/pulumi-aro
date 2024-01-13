@@ -64,6 +64,7 @@ template:
       default: "10.0.2.0/23"
     pullSecret:
       description: OpenShift pullsecret. Download from https://console.redhat.com/openshift/downloads
+      secret: true
     tags:
       type: array
       description: Tags
