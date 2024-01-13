@@ -16,8 +16,14 @@ import (
 
 const ARO_SP_NAME = "Azure Red Hat OpenShift RP"
 
+type AzureNative struct {
+	Location       string
+	SubscriptionId string
+	TenantId       string
+}
+
 // Values refer to structure for configuration settings that can be passed for creating an ARO cluster
-type Values struct {
+type ConfigData struct {
 	ClusterResourceGroupName string
 	ResourceGroupName        string
 	Name                     string
@@ -33,12 +39,12 @@ type Values struct {
 
 // Networking refers to networking settings for ARO cluster
 type Networking struct {
-	Name            string
-	AddressPrefixes string
-	PodCidr         string
-	ServiceCidr     string
-	MasterSubnet    Subnet
-	WorkerSubnet    Subnet
+	Name          string
+	AddressPrefix string
+	PodCidr       string
+	ServiceCidr   string
+	MasterSubnet  Subnet
+	WorkerSubnet  Subnet
 }
 
 // Subnet refers to custom subnets for master and worker nodes to be used
@@ -67,24 +73,9 @@ type ServicePrincipal struct {
 	Description string
 }
 
-func readPullsecretAsJsonString(fileName string) (string, error) {
-	var pullSecretJson string
-	var content []byte
-	var err error
-
-	if content, err = os.ReadFile(fileName); err != nil {
-		return "", err
-	}
-
-	//stringify json read
-	pullSecretJson = string(content)
-
-	return pullSecretJson, nil
-}
-
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
-		var v Values
+		var configData ConfigData
 		var err error
 		var subscriptionId string
 		var rg *resources.ResourceGroup
@@ -96,17 +87,16 @@ func main() {
 		var sp *azuread.ServicePrincipal
 		var aroSP *azuread.ServicePrincipal
 		var spPwd *azuread.ServicePrincipalPassword
-		var pullSecret string
+		var azureNativeConfig AzureNative
 
-		cfg := config.New(ctx, "")
-		cfg.RequireObject("values", &v)
+		configData = readConfig(ctx)
 
 		subscriptionId = "4f85f91d-f079-4a1e-bed7-8af80f509048"
 		fmt.Printf("Subscription ID : %s", subscriptionId)
 
 		//create the resource group
-		if rg, err = resources.NewResourceGroup(ctx, v.ResourceGroupName, &resources.ResourceGroupArgs{
-			ResourceGroupName: pulumi.String(v.ResourceGroupName),
+		if rg, err = resources.NewResourceGroup(ctx, configData.ResourceGroupName, &resources.ResourceGroupArgs{
+			ResourceGroupName: pulumi.String(configData.ResourceGroupName),
 		}); err != nil {
 			return err
 		}
@@ -118,15 +108,15 @@ func main() {
 		}
 
 		//Create an AAD Service Principal
-		if sp, err = azuread.NewServicePrincipal(ctx, v.ServicePrincipal.Name, &azuread.ServicePrincipalArgs{
-			Description: pulumi.String(v.ServicePrincipal.Description),
+		if sp, err = azuread.NewServicePrincipal(ctx, configData.ServicePrincipal.Name, &azuread.ServicePrincipalArgs{
+			Description: pulumi.String(configData.ServicePrincipal.Description),
 			ClientId:    aadApp.ClientId,
 		}); err != nil {
 			return err
 		}
 
 		//create the service principal password
-		if spPwd, err = azuread.NewServicePrincipalPassword(ctx, fmt.Sprintf("%s-password", v.ServicePrincipal.Name), &azuread.ServicePrincipalPasswordArgs{
+		if spPwd, err = azuread.NewServicePrincipalPassword(ctx, fmt.Sprintf("%s-password", configData.ServicePrincipal.Name), &azuread.ServicePrincipalPasswordArgs{
 			ServicePrincipalId: sp.ID(),
 			EndDate:            pulumi.String("2099-01-01T00:00:00Z"),
 		}); err != nil {
@@ -140,22 +130,22 @@ func main() {
 		}
 
 		//create virtual network and master and worker subnets
-		if vnet, err = network.NewVirtualNetwork(ctx, v.Networking.Name, &network.VirtualNetworkArgs{
+		if vnet, err = network.NewVirtualNetwork(ctx, configData.Networking.Name, &network.VirtualNetworkArgs{
 			AddressSpace: &network.AddressSpaceArgs{
 				AddressPrefixes: pulumi.StringArray{
-					pulumi.String(v.Networking.AddressPrefixes),
+					pulumi.String(configData.Networking.AddressPrefix),
 				},
 			},
 			ResourceGroupName:  rg.Name,
-			VirtualNetworkName: pulumi.String(v.Networking.Name),
+			VirtualNetworkName: pulumi.String(configData.Networking.Name),
 		}); err != nil {
 			return err
 		}
 
 		//create subnets for master and worker nodes
-		if masterSubnet, err = network.NewSubnet(ctx, v.Networking.MasterSubnet.Name, &network.SubnetArgs{
-			AddressPrefixes:                   pulumi.StringArray{pulumi.String(v.Networking.MasterSubnet.AddressPrefix)},
-			SubnetName:                        pulumi.String(v.Networking.MasterSubnet.Name),
+		if masterSubnet, err = network.NewSubnet(ctx, configData.Networking.MasterSubnet.Name, &network.SubnetArgs{
+			AddressPrefixes:                   pulumi.StringArray{pulumi.String(configData.Networking.MasterSubnet.AddressPrefix)},
+			SubnetName:                        pulumi.String(configData.Networking.MasterSubnet.Name),
 			VirtualNetworkName:                vnet.Name,
 			ResourceGroupName:                 rg.Name,
 			PrivateLinkServiceNetworkPolicies: pulumi.String("Disabled"),
@@ -168,9 +158,9 @@ func main() {
 			return err
 		}
 
-		if workerSubnet, err = network.NewSubnet(ctx, v.Networking.WorkerSubnet.Name, &network.SubnetArgs{
-			AddressPrefixes:                   pulumi.StringArray{pulumi.String(v.Networking.WorkerSubnet.AddressPrefix)},
-			SubnetName:                        pulumi.String(v.Networking.WorkerSubnet.Name),
+		if workerSubnet, err = network.NewSubnet(ctx, configData.Networking.WorkerSubnet.Name, &network.SubnetArgs{
+			AddressPrefixes:                   pulumi.StringArray{pulumi.String(configData.Networking.WorkerSubnet.AddressPrefix)},
+			SubnetName:                        pulumi.String(configData.Networking.WorkerSubnet.Name),
 			VirtualNetworkName:                vnet.Name,
 			ResourceGroupName:                 rg.Name,
 			PrivateLinkServiceNetworkPolicies: pulumi.String("Disabled"),
@@ -200,21 +190,30 @@ func main() {
 			Scope:            vnet.ID(),
 		})
 
-		if pullSecret, err = readPullsecretAsJsonString("pull-secret.txt"); err != nil {
-			return err
+		if configData.PullSecret != "" {
+			//read from local
+			if pullSecret, err := readPullsecretAsJsonString("pull-secret.txt"); err != nil {
+				return err
+			} else {
+				configData.PullSecret = pullSecret
+			}
 		}
-		clusterResourceGroupId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionId, v.ClusterResourceGroupName)
+
+		//read subscription id
+		cfg := config.New(ctx, "")
+		cfg.RequireObject("azure-native", &azureNativeConfig)
+		clusterResourceGroupId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", azureNativeConfig.SubscriptionId, configData.ClusterResourceGroupName)
 
 		//create the ARO cluster
-		if aroCluster, err = redhatopenshift.NewOpenShiftCluster(ctx, v.Name, &redhatopenshift.OpenShiftClusterArgs{
+		if aroCluster, err = redhatopenshift.NewOpenShiftCluster(ctx, configData.Name, &redhatopenshift.OpenShiftClusterArgs{
 			ApiserverProfile: &redhatopenshift.APIServerProfileArgs{
 				Visibility: pulumi.String("Public"),
 			},
 			ClusterProfile: &redhatopenshift.ClusterProfileArgs{
-				Domain:               pulumi.String(v.Domain),
+				Domain:               pulumi.String(configData.Domain),
 				FipsValidatedModules: pulumi.String("Enabled"),
 				ResourceGroupId:      pulumi.String(clusterResourceGroupId),
-				PullSecret:           pulumi.String(pullSecret),
+				PullSecret:           pulumi.String(configData.PullSecret),
 			},
 			ConsoleProfile: nil,
 			IngressProfiles: redhatopenshift.IngressProfileArray{
@@ -272,4 +271,153 @@ func main() {
 		}))
 		return nil
 	})
+}
+
+func readPullsecretAsJsonString(fileName string) (string, error) {
+	var pullSecretJson string
+	var content []byte
+	var err error
+
+	if content, err = os.ReadFile(fileName); err != nil {
+		return "", err
+	}
+
+	//stringify json read
+	pullSecretJson = string(content)
+
+	return pullSecretJson, nil
+}
+
+func readConfig(ctx *pulumi.Context) ConfigData {
+	var configData = ConfigData{}
+	var tags map[string]string
+
+	cfg := config.New(ctx, "")
+
+	if clusterResourceGroupName, err := cfg.Try("clusterResourceGroupName"); err != nil {
+		configData.ClusterResourceGroupName = "aro-infra-rg"
+	} else {
+		configData.ClusterResourceGroupName = clusterResourceGroupName
+	}
+
+	if resourceGroupName, err := cfg.Try("resourceGroupName"); err != nil {
+		configData.ResourceGroupName = "aro-rg"
+	} else {
+		configData.ResourceGroupName = resourceGroupName
+	}
+
+	if name, err := cfg.Try("name"); err != nil {
+		configData.Name = "arodemo"
+	} else {
+		configData.Name = name
+	}
+
+	if domain, err := cfg.Try("domain"); err != nil {
+		configData.Domain = "demos"
+	} else {
+		configData.Domain = domain
+	}
+
+	if location, err := cfg.Try("location"); err != nil {
+		configData.Location = "EastUS"
+	} else {
+		configData.Location = location
+	}
+
+	configData.ServicePrincipal = ServicePrincipal{}
+	if servicePrincipalName, err := cfg.Try("servicePrincipalName"); err != nil {
+		configData.ServicePrincipal.Name = "arodemo-sp"
+	} else {
+		configData.ServicePrincipal.Name = servicePrincipalName
+	}
+	if desc, err := cfg.Try("servicePrincipalDescription"); err != nil {
+		configData.ServicePrincipal.Description = "aro demo service principal"
+	} else {
+		configData.ServicePrincipal.Description = desc
+	}
+
+	configData.Master = MasterProfile{}
+	configData.Master.Count = 3
+	if vmSize, err := cfg.Try("masterVmSize"); err != nil {
+		configData.Master.VmSize = "Standard_D8s_v3"
+	} else {
+		configData.Master.VmSize = vmSize
+
+	}
+
+	configData.Worker = WorkerProfile{}
+	if workerName, err := cfg.Try("workerName"); err != nil {
+		configData.Worker.Name = "worker"
+	} else {
+		configData.Worker.Name = workerName
+	}
+	if workerVmSize, err := cfg.Try("workerVmSize"); err != nil {
+		configData.Worker.VmSize = "Standard_D4s_v3"
+	} else {
+		configData.Worker.VmSize = workerVmSize
+	}
+	if workerDiskSize, err := cfg.TryInt("workerDiskSize"); err != nil {
+		configData.Worker.DiskSizeGB = 128
+	} else {
+		configData.Worker.DiskSizeGB = workerDiskSize
+	}
+	if workerNodeCount, err := cfg.TryInt("workerNodeCount"); err != nil {
+		configData.Worker.Count = 3
+	} else {
+		configData.Worker.Count = workerNodeCount
+	}
+
+	configData.Networking = Networking{}
+	if vnetName, err := cfg.Try("vnetName"); err != nil {
+		configData.Networking.Name = "arodemo-vnet"
+	} else {
+		configData.Networking.Name = vnetName
+	}
+	if vnetAddressPrefix, err := cfg.Try("vnetAddressPrefix"); err != nil {
+		configData.Networking.AddressPrefix = "10.0.0.0/22"
+	} else {
+		configData.Networking.AddressPrefix = vnetAddressPrefix
+	}
+	if podCidr, err := cfg.Try("podCidr"); err != nil {
+		configData.Networking.PodCidr = "10.128.0.0/14"
+	} else {
+		configData.Networking.PodCidr = podCidr
+	}
+	if serviceCidr, err := cfg.Try("serviceCidr"); err != nil {
+		configData.Networking.ServiceCidr = "172.30.0.0/16"
+	} else {
+		configData.Networking.ServiceCidr = serviceCidr
+	}
+	configData.Networking.MasterSubnet = Subnet{}
+	if masterSubnetName, err := cfg.Try("masterSubnetName"); err != nil {
+		configData.Networking.MasterSubnet.Name = "master"
+	} else {
+		configData.Networking.MasterSubnet.Name = masterSubnetName
+	}
+	if masterSubnetAddressPrefix, err := cfg.Try("masterSubnetAddressPrefix"); err != nil {
+		configData.Networking.MasterSubnet.AddressPrefix = "10.0.0.0/23"
+	} else {
+		configData.Networking.MasterSubnet.AddressPrefix = masterSubnetAddressPrefix
+	}
+	configData.Networking.WorkerSubnet = Subnet{}
+	if workerSubnetName, err := cfg.Try("workerSubnetName"); err != nil {
+		configData.Networking.WorkerSubnet.Name = "worker"
+	} else {
+		configData.Networking.WorkerSubnet.Name = workerSubnetName
+	}
+	if workerSubnetAddressPrefix, err := cfg.Try("workerSubnetAddressPrefix"); err != nil {
+		configData.Networking.WorkerSubnet.AddressPrefix = "10.0.2.0/23"
+	} else {
+		configData.Networking.WorkerSubnet.AddressPrefix = workerSubnetAddressPrefix
+	}
+
+	if pullSecret, err := cfg.Try("pullSecret"); err != nil {
+		configData.PullSecret = ""
+	} else {
+		configData.PullSecret = pullSecret
+	}
+	cfg.TryObject("tags", &tags)
+	configData.Tags = tags
+
+	return configData
 }

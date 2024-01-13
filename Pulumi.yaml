@@ -1,3 +1,74 @@
-name: pulumi-aro
+name: ${PROJECT}
 runtime: go
-description: Go pulumi program that creates an Azure ARO cluster
+description: ${DESCRIPTION}
+template:
+  description: A Go program for deploying an Azure Red Hat OpenShift cluster
+  config:
+    clusterResourceGroupName:
+      description: ARO Cluster Infrastructure resource group
+      default: aro-infra-rg
+    resourceGroupName:
+      description: ARO Cluster Resource Group
+      default: aro-rg
+    name:
+      description: OpenShift Cluster name
+      default: arodemo
+    domain:
+      description: |
+        Domain name can be a custom domain (example.com) or a prefix (abc) that will be used as part of the auto-generated DNS name for OpenShift console and API servers
+      default: demos
+    location:
+      description: Azure region where the cluster resources will be provisioned
+      default: EastUS
+    servicePrincipalName:
+      description: Serviceprincipal name
+      default: arodemo-sp
+    servicePrincipalDescription:
+      description: Service principal description
+      default: ARO demo serviceprincipal
+    masterVmSize:
+      description: Master node VM Size
+      default: "Standard_D8s_v3"
+    workerName:
+      description: Worker node group name
+      default: worker
+    workerVmSize: 
+      description: Worker node VM size
+      default: "Standard_D4s_v3"
+    workerDiskSize:
+      description: Worker node disk size
+      default: 128
+    workerNodeCount: 
+      description: Worker node count
+      default: 3
+    vnetName:
+      description: Virtual network name
+      default: arodemo-vnet
+    vnetAddressPrefix:
+      description: Virtual network address prefix
+      default: "10.0.0.0/22"
+    podCidr:
+      description: POD CIDR
+      default: "10.128.0.0/14"
+    serviceCidr:
+      description: Service CIDR
+      default: "172.30.0.0/16"
+    masterSubnetName:
+      description: Master subnet name
+      default: master
+    masterSubnetAddressPrefix:
+      description: Master subnet address prefix
+      default:  "10.0.0.0/23"
+    workerSubnetName:
+      description: Worker subnet name
+      default: worker
+    workerSubnetAddressPrefix:
+      description: Worker subnet address prefix
+      default: "10.0.2.0/23"
+    pullSecret:
+      description: OpenShift pullsecret. Download from https://console.redhat.com/openshift/downloads
+    tags:
+      type: array
+      description: Tags
+      items: string
+      
