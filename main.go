@@ -200,8 +200,7 @@ func main() {
 		}
 
 		//read subscription id
-		cfg := config.New(ctx, "")
-		cfg.RequireObject("azure-native", &azureNativeConfig)
+		config.GetObject(ctx, "azure-native", &azureNativeConfig)
 		clusterResourceGroupId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", azureNativeConfig.SubscriptionId, configData.ClusterResourceGroupName)
 
 		//create the ARO cluster
@@ -222,33 +221,33 @@ func main() {
 					Visibility: pulumi.String("Public"),
 				},
 			},
-			Location: pulumi.String(v.Location),
+			Location: pulumi.String(configData.Location),
 			MasterProfile: &redhatopenshift.MasterProfileArgs{
 				EncryptionAtHost: pulumi.String("Disabled"),
 				SubnetId:         masterSubnet.ID(),
-				VmSize:           pulumi.String(v.Master.VmSize),
+				VmSize:           pulumi.String(configData.Master.VmSize),
 			},
 			NetworkProfile: &redhatopenshift.NetworkProfileArgs{
-				PodCidr:     pulumi.String(v.Networking.PodCidr),
-				ServiceCidr: pulumi.String(v.Networking.ServiceCidr),
+				PodCidr:     pulumi.String(configData.Networking.PodCidr),
+				ServiceCidr: pulumi.String(configData.Networking.ServiceCidr),
 			},
 			ResourceGroupName: rg.Name,
-			ResourceName:      pulumi.String(v.Name),
+			ResourceName:      pulumi.String(configData.Name),
 			ServicePrincipalProfile: &redhatopenshift.ServicePrincipalProfileArgs{
 				ClientId:     sp.ClientId,
 				ClientSecret: spPwd.Value,
 			},
 			WorkerProfiles: redhatopenshift.WorkerProfileArray{
 				&redhatopenshift.WorkerProfileArgs{
-					Count:            pulumi.Int(v.Worker.Count),
-					DiskSizeGB:       pulumi.Int(v.Worker.DiskSizeGB),
-					Name:             pulumi.String(v.Worker.Name),
+					Count:            pulumi.Int(configData.Worker.Count),
+					DiskSizeGB:       pulumi.Int(configData.Worker.DiskSizeGB),
+					Name:             pulumi.String(configData.Worker.Name),
 					SubnetId:         workerSubnet.ID(),
-					VmSize:           pulumi.String(v.Worker.VmSize),
+					VmSize:           pulumi.String(configData.Worker.VmSize),
 					EncryptionAtHost: pulumi.String("Disabled"),
 				},
 			},
-			Tags: pulumi.ToStringMap(v.Tags),
+			Tags: pulumi.ToStringMap(configData.Tags),
 		}, pulumi.DependsOn([]pulumi.Resource{rg, vnet, masterSubnet, workerSubnet})); err != nil {
 			return err
 		}
