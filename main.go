@@ -16,18 +16,13 @@ import (
 
 const ARO_SP_NAME = "Azure Red Hat OpenShift RP"
 
-type AzureNative struct {
-	Location       string
-	SubscriptionId string
-	TenantId       string
-}
-
 // Values refer to structure for configuration settings that can be passed for creating an ARO cluster
 type ConfigData struct {
 	ClusterResourceGroupName string
 	ResourceGroupName        string
 	Name                     string
 	Domain                   string
+	Region                   string
 	ServicePrincipal         ServicePrincipal
 	PullSecret               string
 	Networking               Networking
@@ -85,18 +80,12 @@ func main() {
 		var sp *azuread.ServicePrincipal
 		var aroSP *azuread.ServicePrincipal
 		var spPwd *azuread.ServicePrincipalPassword
-		var azureNativeConfig AzureNative
+		var azureNativeConfig *authorization.GetClientConfigResult
 
 		configData = readConfig(ctx)
 		//read azure-native config
-		azNative := config.New(ctx, "azure-native")
-		location := azNative.Require("location")
-		subscriptionId := azNative.Require("subscriptionId")
-		tenantId := azNative.Require("tenantId")
-		azureNativeConfig = AzureNative{
-			Location:       location,
-			SubscriptionId: subscriptionId,
-			TenantId:       tenantId,
+		if azureNativeConfig, err = authorization.GetClientConfig(ctx); err != nil {
+			return err
 		}
 
 		//create the resource group
@@ -224,7 +213,7 @@ func main() {
 					Visibility: pulumi.String("Public"),
 				},
 			},
-			Location: pulumi.String(azureNativeConfig.Location),
+			Location: pulumi.String(configData.Region),
 			MasterProfile: &redhatopenshift.MasterProfileArgs{
 				EncryptionAtHost: pulumi.String("Disabled"),
 				SubnetId:         masterSubnet.ID(),
@@ -318,6 +307,12 @@ func readConfig(ctx *pulumi.Context) ConfigData {
 		configData.Domain = "demos"
 	} else {
 		configData.Domain = domain
+	}
+
+	if region, err := cfg.Try("region"); err != nil {
+		configData.Region = "EastUS"
+	} else {
+		configData.Region = region
 	}
 
 	configData.ServicePrincipal = ServicePrincipal{}
